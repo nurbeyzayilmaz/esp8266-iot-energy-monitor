@@ -24,6 +24,24 @@ This project is a complete, end-to-end IoT energy monitoring system that I desig
 
 ---
 
+## 🔄 Two Firmware Versions
+
+This project went through two development phases, both of which are preserved in this repository:
+
+| | [Blynk Version](firmware/blynk/sketch_blynk.ino) | [Supabase Version](firmware/enerji-takip-esp8266.ino) |
+|---|---|---|
+| **Backend** | Blynk IoT Cloud | Supabase (PostgreSQL) |
+| **Dashboard** | Blynk mobile + web app | Custom Next.js web app |
+| **Protocol** | Blynk virtual pins (V2–V16) | HTTPS REST API |
+| **Data storage** | Blynk cloud (ephemeral) | PostgreSQL (persistent) |
+| **Realtime** | Blynk WebSocket | Supabase Realtime WebSocket |
+| **Custom logic** | Blynk timer-based | Polling + command table pattern |
+| **Status** | ✅ Working prototype | ✅ Production (live demo) |
+
+> The Blynk version was developed first as a rapid prototype. The Supabase version is a full rewrite that replaces the proprietary IoT platform with an open-source stack, enabling persistent data storage, custom dashboards, and full backend control.
+
+---
+
 ## 🔍 Real-World Discovery — Phantom Load Detection
 
 > *This capability was validated experimentally with a university faculty advisor.*
@@ -65,8 +83,6 @@ This means the sensor captures **even the tiny, non-sinusoidal current drawn by 
 - 🏠 **Smart home:** Detect which appliances to put on smart plugs
 - 📊 **Energy auditing:** Quantify real idle consumption vs. rated power
 - 💡 **Awareness:** Users see the exact cost of leaving devices plugged in
-
-> This behavior — continuous AC waveform sampling at 2-second intervals, combined with moving-average filtering — makes the system suitable for real energy audit scenarios, not just educational demonstrations.
 
 ---
 
@@ -184,7 +200,7 @@ This means the sensor captures **even the tiny, non-sinusoidal current drawn by 
 
 ### 📊 Web Dashboard
 
-![Blynk Web Dashboard](docs/blynk-dashboard.png)
+![Web Dashboard](docs/blynk-dashboard.png)
 
 *Real-time readings: voltage (151V), power (2706W), energy chart, estimated bill (₺1,905), relay control, and advisory system*
 
@@ -192,7 +208,7 @@ This means the sensor captures **even the tiny, non-sinusoidal current drawn by 
 
 ### ⚙️ Datastreams Configuration
 
-![Blynk Datastreams](docs/blynk-datastreams.png)
+![Datastreams](docs/blynk-datastreams.png)
 
 *14 virtual datastreams: current, voltage, power, energy (kWh), frequency, power factor, relay switch, LED, button, advisory message, estimated bill, WiFi RSSI, uptime*
 
@@ -204,8 +220,9 @@ This means the sensor captures **even the tiny, non-sinusoidal current drawn by 
 esp8266-iot-energy-monitor/
 │
 ├── firmware/
-│   └── enerji-takip-esp8266.ino   # ESP8266 firmware (C++/Arduino)
-│                                   # Modbus RTU + Supabase REST API
+│   ├── enerji-takip-esp8266.ino   # v2 — Supabase + REST API (production)
+│   └── blynk/
+│       └── sketch_blynk.ino       # v1 — Blynk IoT platform (prototype)
 │
 ├── web-dashboard/
 │   ├── app/
@@ -230,22 +247,30 @@ esp8266-iot-energy-monitor/
 
 ## 🚀 Getting Started
 
-### Firmware Setup
+### Firmware Setup (Supabase version)
 
-1. **Install Arduino IDE** and add ESP8266 board support
-2. **Install libraries** via Library Manager:
-   - `PZEM004Tv30` by Maxz
-   - `ArduinoJson` by Benoit Blanchon
-   - `ESP8266WiFi`, `ESP8266HTTPClient` (built-in with ESP8266 core)
-3. **Clone this repo** and open `firmware/enerji-takip-esp8266.ino`
-4. **Edit credentials** at the top of the file:
+1. Install Arduino IDE + ESP8266 board support
+2. Install libraries: `PZEM004Tv30`, `ArduinoJson`, `ESP8266WiFi`
+3. Open `firmware/enerji-takip-esp8266.ino` and fill in credentials:
    ```cpp
    const char* WIFI_SSID = "YOUR_WIFI_SSID";
    const char* WIFI_PASS = "YOUR_WIFI_PASSWORD";
    const char* SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co";
    const char* SUPABASE_KEY = "YOUR_SUPABASE_ANON_KEY";
    ```
-5. **Flash** to ESP8266 NodeMCU (115200 baud)
+4. Flash to NodeMCU at 115200 baud
+
+### Firmware Setup (Blynk version)
+
+1. Install libraries: `PZEM004Tv30`, `BlynkSimpleEsp8266`
+2. Open `firmware/blynk/sketch_blynk.ino` and fill in:
+   ```cpp
+   #define BLYNK_TEMPLATE_ID   "YOUR_BLYNK_TEMPLATE_ID"
+   #define BLYNK_AUTH_TOKEN    "YOUR_BLYNK_AUTH_TOKEN"
+   char ssid[] = "YOUR_WIFI_SSID";
+   char pass[] = "YOUR_WIFI_PASSWORD";
+   ```
+3. Flash to NodeMCU at 115200 baud
 
 ### Web Dashboard Setup
 
@@ -253,71 +278,27 @@ esp8266-iot-energy-monitor/
 cd web-dashboard
 npm install
 cp .env.example .env.local
-# Edit .env.local with your Supabase credentials
 npm run dev
-```
-
-### Supabase Database Schema
-
-```sql
-CREATE TABLE readings (
-  id              BIGSERIAL PRIMARY KEY,
-  voltage         FLOAT,
-  current_a       FLOAT,
-  power           FLOAT,
-  energy          FLOAT,
-  power_factor    FLOAT,
-  frequency       FLOAT,
-  rssi            INT,
-  uptime_seconds  BIGINT,
-  max_power       FLOAT,
-  created_at      TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE commands (
-  id         BIGSERIAL PRIMARY KEY,
-  command    TEXT NOT NULL,
-  executed   BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE settings (
-  key        TEXT PRIMARY KEY,
-  value      TEXT NOT NULL,
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE alerts (
-  id          BIGSERIAL PRIMARY KEY,
-  message     TEXT,
-  power_value FLOAT,
-  created_at  TIMESTAMPTZ DEFAULT NOW()
-);
 ```
 
 ---
 
 ## 🛠️ Tech Stack
 
-| Layer | Technology | Version |
-|-------|-----------|---------|
-| **Microcontroller** | ESP8266 / Arduino C++ | ESP8266 Core 3.x |
-| **Sensor Protocol** | Modbus RTU (PZEM004Tv30 lib) | v3.0 |
-| **Cloud Database** | Supabase (PostgreSQL) | - |
-| **Realtime** | Supabase Realtime WebSocket | - |
-| **Frontend** | Next.js + React | 15.x |
-| **Styling** | TailwindCSS | 3.x |
-| **Charts** | Recharts | 2.x |
-| **Icons** | Lucide React | - |
-| **Deployment** | Netlify | - |
+| Layer | Technology |
+|-------|-----------|
+| **Microcontroller** | ESP8266 NodeMCU / Arduino C++ |
+| **Sensor Protocol** | Modbus RTU (PZEM004Tv30) |
+| **Cloud Database** | Supabase (PostgreSQL + Realtime) |
+| **Frontend** | Next.js 15 + React + TailwindCSS |
+| **Charts** | Recharts |
+| **Deployment** | Netlify |
 
 ---
 
 ## 👤 Author
 
-**Beyza Nur Yılmaz**
-Electrical & Electronics Engineering, 3rd Year
-İnönü Üniversitesi
+**Beyza Nur Yılmaz** — EEE Student, İnönü Üniversitesi
 
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-0A66C2?style=flat&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/nur-beyza-yilmaz/)
 [![GitHub](https://img.shields.io/badge/GitHub-181717?style=flat&logo=github&logoColor=white)](https://github.com/nurbeyzayilmaz)
