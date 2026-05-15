@@ -24,6 +24,52 @@ This project is a complete, end-to-end IoT energy monitoring system that I desig
 
 ---
 
+## 🔍 Real-World Discovery — Phantom Load Detection
+
+> *This capability was validated experimentally with a university faculty advisor.*
+
+One of the most impactful findings during testing: **the system accurately detects phantom load (standby power draw)** — electricity consumed by devices that appear to be "off" but remain plugged into the grid.
+
+### What is Phantom Load?
+
+When an appliance is in standby mode, it continues drawing power from the grid even though it performs no useful work. This energy is silently added to your electricity bill every month.
+
+### Experimental Result
+
+| Device | State | Measured Power |
+|--------|-------|---------------|
+| Printer | **Standby** (display off, "sleeping") | **18 W** |
+| Printer | Fully unplugged | 0 W |
+
+A printer left plugged in overnight (8h) consumes **≈ 144 Wh = 0.144 kWh** of phantom energy — doing nothing.  
+At ₺3.20/kWh → **≈ ₺0.46/night**, **≈ ₺168/year** wasted on a single device in standby.
+
+### How the System Measures This
+
+The PZEM-004T sensor computes **true active power** using the AC power formula:
+
+```
+P (W) = V_rms × I_rms × cos(φ)
+```
+
+Where:
+- `V_rms` — Root Mean Square voltage (grid voltage)
+- `I_rms` — Root Mean Square current (true current draw, including standby)
+- `cos(φ)` — Power factor (ratio of real to apparent power)
+
+This means the sensor captures **even the tiny, non-sinusoidal current drawn by switching power supplies in standby** — something a basic clamp meter often misses. The result is visible in real-time on the dashboard the moment a device transitions between states (off → standby → active → off).
+
+### Why This Matters
+
+- 🏭 **Industrial applications:** Identify energy-wasting equipment in factories during off-hours
+- 🏠 **Smart home:** Detect which appliances to put on smart plugs
+- 📊 **Energy auditing:** Quantify real idle consumption vs. rated power
+- 💡 **Awareness:** Users see the exact cost of leaving devices plugged in
+
+> This behavior — continuous AC waveform sampling at 2-second intervals, combined with moving-average filtering — makes the system suitable for real energy audit scenarios, not just educational demonstrations.
+
+---
+
 ## 🏗️ System Architecture
 
 ```
@@ -96,6 +142,8 @@ This project is a complete, end-to-end IoT energy monitoring system that I desig
 ### Firmware (C++ / Arduino)
 - [x] **Modbus RTU** communication with PZEM-004T over SoftwareSerial
 - [x] Reads: voltage, current, power (W), energy (kWh), power factor, frequency
+- [x] **True AC active power** measurement: `P = V_rms × I_rms × cos(φ)`
+- [x] **Phantom load detection** — captures standby draw invisible to basic meters
 - [x] **Exponential moving average** filter (α=0.3) for stable readings
 - [x] Power offset correction for cable/measurement losses
 - [x] **Over-consumption alert** → auto-writes to Supabase `alerts` table
@@ -202,26 +250,16 @@ esp8266-iot-energy-monitor/
 ### Web Dashboard Setup
 
 ```bash
-# Clone and navigate to web directory
 cd web-dashboard
-
-# Install dependencies
 npm install
-
-# Copy and configure environment
 cp .env.example .env.local
-# → Edit .env.local with your Supabase credentials
-
-# Run development server
+# Edit .env.local with your Supabase credentials
 npm run dev
 ```
 
 ### Supabase Database Schema
 
-Create the following tables in your Supabase project:
-
 ```sql
--- Sensor readings (every 2 seconds)
 CREATE TABLE readings (
   id              BIGSERIAL PRIMARY KEY,
   voltage         FLOAT,
@@ -236,22 +274,19 @@ CREATE TABLE readings (
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Remote commands from dashboard → ESP8266
 CREATE TABLE commands (
   id         BIGSERIAL PRIMARY KEY,
-  command    TEXT NOT NULL,  -- 'relay_on' | 'relay_off' | 'energy_reset' | 'wifi_reset'
+  command    TEXT NOT NULL,
   executed   BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Configurable settings
 CREATE TABLE settings (
   key        TEXT PRIMARY KEY,
   value      TEXT NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Over-consumption events
 CREATE TABLE alerts (
   id          BIGSERIAL PRIMARY KEY,
   message     TEXT,
